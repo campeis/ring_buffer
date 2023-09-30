@@ -26,7 +26,7 @@ impl RingBuffer {
     /// # Arguments
     ///
     /// * `size` - The maximum number of elements in the queue. it will be pre-allocated. The size will be rounded to the next power of 2 to allow for faster math.
-    pub fn create<T: Default + Sized>(size: usize) -> (RingBufferProducer<T>, RingBufferConsumer<T>)
+    pub fn create<T: Default>(size: usize) -> (RingBufferProducer<T>, RingBufferConsumer<T>)
     where
         T: Default + Clone,
     {
