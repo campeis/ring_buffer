@@ -1,4 +1,4 @@
-use ring_buffer::{Consumer, Producer, RingBuffer};
+use ring_buffer::RingBuffer;
 use std::sync::{Arc, RwLock};
 use std::thread;
 
