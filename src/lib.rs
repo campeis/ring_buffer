@@ -23,9 +23,6 @@ pub struct RingBuffer<T> {
     state: Arc<RingBufferState<T>>,
 }
 
-unsafe impl<T> Sync for RingBuffer<T> {}
-unsafe impl<T> Send for RingBuffer<T> {}
-
 impl<T> RingBuffer<T>
 where
     T: Default,
@@ -39,26 +36,6 @@ where
         RingBuffer {
             state: Arc::new(RingBufferState::new(size)),
         }
-    }
-
-    /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full will block until a new item has been consumed and freed.
-    pub fn reserve_produce(&self) -> ProduceGuard<T> {
-        self.state.reserve_produce()
-    }
-
-    /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full will return ReservationErr::NoAvailableSlot.
-    pub fn try_reserve_produce(&self) -> Result<ProduceGuard<T>, ReservationErr> {
-        self.state.try_reserve_produce()
-    }
-
-    /// Returns a ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will block until a new item has been added to the queue.
-    pub fn reserve_consume(&self) -> ConsumeGuard<T> {
-        self.state.reserve_consume()
-    }
-
-    /// Returns ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will return ReservationErr::NoAvailableSlot.
-    pub fn try_reserve_consume(&self) -> Result<ConsumeGuard<T>, ReservationErr> {
-        self.state.try_reserve_consume()
     }
 
     pub fn size(&self) -> usize {
@@ -75,6 +52,54 @@ impl From<tracking_cursor::ReservationErr> for ReservationErr {
         match value {
             tracking_cursor::ReservationErr::NoAvailableSlot => Self::NoAvailableSlot,
         }
+    }
+}
+pub trait Producer<T> {
+    /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full will block until a new item has been consumed and freed.
+    fn reserve_produce(&self) -> ProduceGuard<T>;
+
+    /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full will return ReservationErr::NoAvailableSlot.
+    fn try_reserve_produce(&self) -> Result<ProduceGuard<T>, ReservationErr>;
+}
+
+pub trait Consumer<T> {
+    /// Returns a ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will block until a new item has been added to the queue.
+    fn reserve_consume(&self) -> ConsumeGuard<T>;
+
+    /// Returns ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will return ReservationErr::NoAvailableSlot.
+    fn try_reserve_consume(&self) -> Result<ConsumeGuard<T>, ReservationErr>;
+}
+
+unsafe impl<T> Sync for RingBuffer<T> {}
+unsafe impl<T> Send for RingBuffer<T> {}
+
+impl<T> Producer<T> for RingBuffer<T>
+where
+    T: Default,
+{
+    /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full will block until a new item has been consumed and freed.
+    fn reserve_produce(&self) -> ProduceGuard<T> {
+        self.state.reserve_produce()
+    }
+
+    /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full will return ReservationErr::NoAvailableSlot.
+    fn try_reserve_produce(&self) -> Result<ProduceGuard<T>, ReservationErr> {
+        self.state.try_reserve_produce()
+    }
+}
+
+impl<T> Consumer<T> for RingBuffer<T>
+where
+    T: Default,
+{
+    /// Returns a ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will block until a new item has been added to the queue.
+    fn reserve_consume(&self) -> ConsumeGuard<T> {
+        self.state.reserve_consume()
+    }
+
+    /// Returns ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will return ReservationErr::NoAvailableSlot.
+    fn try_reserve_consume(&self) -> Result<ConsumeGuard<T>, ReservationErr> {
+        self.state.try_reserve_consume()
     }
 }
 
@@ -133,7 +158,7 @@ where
 /// # Examples
 ///
 /// ```
-/// use ring_buffer::RingBuffer;
+/// use ring_buffer::{RingBuffer, Producer};
 ///
 /// let queue = RingBuffer::<usize>::new(1);
 /// {
@@ -188,7 +213,7 @@ impl<'a, T> Drop for ProduceGuard<'a, T> {
 /// # Examples
 ///
 /// ```
-/// use ring_buffer::RingBuffer;
+/// use ring_buffer::{RingBuffer,Producer,Consumer};
 ///
 /// let queue = RingBuffer::<usize>::new(1);
 /// {
