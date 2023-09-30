@@ -9,8 +9,8 @@ struct TestStruct {
 
 #[test]
 fn use_deref() {
-    let buffer = RingBuffer::<TestStruct>::new(1024);
-    let to_produce = buffer.size() * 100;
+    let (producer, consumer) = RingBuffer::create::<TestStruct>(1024);
+    let to_produce = producer.size() * 100;
 
     let mut concurency: usize = num_cpus::get() / 2;
     if concurency == 0 {
@@ -18,10 +18,10 @@ fn use_deref() {
     }
 
     for i in 0..concurency {
-        let buffer_copy = buffer.clone();
+        let producer_copy = producer.clone();
         thread::spawn(move || {
             for a in 0..to_produce {
-                let mut producer = buffer_copy.reserve_produce();
+                let mut producer = producer_copy.reserve_produce();
                 producer.value = a + to_produce * i;
             }
         });
@@ -29,12 +29,12 @@ fn use_deref() {
     let mut handlers = Vec::with_capacity(concurency);
     let total_received = Arc::new(RwLock::new(Vec::with_capacity(concurency * to_produce)));
     for _ in 0..concurency {
-        let buffer_copy = buffer.clone();
+        let consumer_copy = consumer.clone();
         let total_received_copy = total_received.clone();
         handlers.push(thread::spawn(move || {
             let mut received = Vec::with_capacity(to_produce);
             for _ in 0..to_produce {
-                received.push(buffer_copy.reserve_consume().value);
+                received.push(consumer_copy.reserve_consume().value);
             }
             let guard = total_received_copy.write();
             guard.unwrap().append(&mut received);
@@ -54,38 +54,38 @@ fn use_deref() {
 
 #[test]
 fn can_reserve_for_production_if_not_all_slots_are_full() {
-    let buffer = RingBuffer::<TestStruct>::new(1024);
+    let (producer, _) = RingBuffer::create::<TestStruct>(1024);
 
-    let res = buffer.try_reserve_produce();
+    let res = producer.try_reserve_produce();
     assert!(res.is_ok())
 }
 
 #[test]
 fn cant_reserve_for_production_if_all_slots_are_full() {
-    let buffer = RingBuffer::<TestStruct>::new(1024);
+    let (producer, _) = RingBuffer::create::<TestStruct>(1024);
 
-    for i in 0..buffer.size() {
-        buffer.reserve_produce().value = i;
+    for i in 0..producer.size() {
+        producer.reserve_produce().value = i;
     }
 
-    let res = buffer.try_reserve_produce();
+    let res = producer.try_reserve_produce();
     assert!(res.is_err())
 }
 
 #[test]
 fn can_reserve_for_consuming_if_there_is_an_available_slot() {
-    let buffer = RingBuffer::<TestStruct>::new(1024);
+    let (producer, consumer) = RingBuffer::create::<TestStruct>(1024);
     {
-        let mut guard = buffer.reserve_produce();
+        let mut guard = producer.reserve_produce();
         guard.value = 1;
     }
-    let res = buffer.try_reserve_consume();
+    let res = consumer.try_reserve_consume();
     assert!(res.is_ok())
 }
 
 #[test]
 fn cant_reserve_for_consuming_if_all_slots_are_empty() {
-    let buffer = RingBuffer::<TestStruct>::new(1024);
-    let res = buffer.try_reserve_consume();
+    let (_, consumer) = RingBuffer::create::<TestStruct>(1024);
+    let res = consumer.try_reserve_consume();
     assert!(res.is_err())
 }
