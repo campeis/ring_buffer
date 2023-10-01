@@ -13,6 +13,9 @@ pub(crate) struct TrackingCursor {
     availability_strategy: Box<AvailabilityStrategy<Self>>,
 }
 
+unsafe impl Send for TrackingCursor {}
+unsafe impl Sync for TrackingCursor {}
+
 #[derive(Debug)]
 pub(crate) struct ReservedForCursor {
     reserved_slot: usize,
