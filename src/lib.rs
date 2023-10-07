@@ -35,11 +35,7 @@ impl RingBuffer {
 
         let size = produce_tracker.size();
 
-        let mut buffer = Vec::with_capacity(size);
-        for _ in 0..size {
-            buffer.push(UnsafeCell::default());
-        }
-        let buffer = Arc::new(buffer);
+        let buffer = Self::init_vec_with_size(size);
 
         (
             RingBufferProducer::new(
@@ -50,8 +46,53 @@ impl RingBuffer {
             RingBufferConsumer::new(buffer, produce_tracker, consume_tracker),
         )
     }
+
+    pub fn create_with_intermediate_stage<T: Default>(
+        size: usize,
+    ) -> (
+        RingBufferProducer<T>,
+        RingBufferConsumer<T>,
+        RingBufferConsumer<T>,
+    )
+    where
+        T: Default + Clone,
+    {
+        let produce_tracker = Arc::new(TrackingCursor::leader(size));
+        let intermediate_tracker = Arc::new(TrackingCursor::follower(size));
+        let consume_tracker = Arc::new(TrackingCursor::follower(size));
+
+        let size = produce_tracker.size();
+
+        let buffer = Self::init_vec_with_size(size);
+
+        (
+            RingBufferProducer::new(
+                buffer.clone(),
+                produce_tracker.clone(),
+                intermediate_tracker.clone(),
+            ),
+            RingBufferConsumer::new(
+                buffer.clone(),
+                consume_tracker.clone(),
+                intermediate_tracker.clone(),
+            ),
+            RingBufferConsumer::new(buffer, produce_tracker, consume_tracker),
+        )
+    }
+
+    fn init_vec_with_size<T: Default>(size: usize) -> Arc<Vec<UnsafeCell<CachePadded<T>>>>
+    where
+        T: Default + Clone,
+    {
+        let mut buffer = Vec::with_capacity(size);
+        for _ in 0..size {
+            buffer.push(UnsafeCell::default());
+        }
+        Arc::new(buffer)
+    }
 }
 
+#[derive(Debug)]
 pub enum ReservationErr {
     NoAvailableSlot,
 }

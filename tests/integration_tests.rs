@@ -89,3 +89,29 @@ fn cant_reserve_for_consuming_if_all_slots_are_empty() {
     let res = consumer.try_reserve_consume();
     assert!(res.is_err())
 }
+
+#[test]
+fn cant_reserve_for_consuming_if_intermediate_stage_did_not_consume() {
+    let (producer, _, consumer) = RingBuffer::create_with_intermediate_stage::<TestStruct>(1024);
+
+    {
+        producer.try_reserve_produce().unwrap().value = 1;
+    }
+
+    assert!(consumer.try_reserve_consume().is_err())
+}
+
+#[test]
+fn can_reserve_for_consuming_if_intermediate_stage_consumed() {
+    let (producer, intermediate, consumer) =
+        RingBuffer::create_with_intermediate_stage::<TestStruct>(1024);
+    {
+        producer.try_reserve_produce().unwrap().value = 1;
+    }
+
+    {
+        assert_eq!(1, intermediate.try_reserve_consume().unwrap().value);
+    }
+
+    assert!(consumer.try_reserve_consume().is_ok());
+}
