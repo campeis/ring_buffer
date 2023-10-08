@@ -14,6 +14,7 @@ use std::cell::UnsafeCell;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use std::time::Duration;
 
 use tracking_cursor::{ReservedForCursor, TrackingCursor};
 
@@ -145,6 +146,19 @@ where
         Ok(ProduceGuard::new(self, reservation))
     }
 
+    /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full it will wait for a free spot
+    /// until timeout expires. If no spot frees before timeout expires will return ReservationErr::NoAvailableSlot.
+    /// The timeout is not an hard timeout, but just represents the minimum time this function is going to wait.
+    pub fn try_reserve_produce_with_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<ProduceGuard<T>, ReservationErr> {
+        let reservation = self
+            .produce_tracker
+            .try_advance_cursor_with_timeout(timeout)?;
+        Ok(ProduceGuard::new(self, reservation))
+    }
+
     /// Returns the number of available entities in the producer
     pub fn size(&self) -> usize {
         self.buffer.len()
@@ -189,6 +203,19 @@ where
     /// Returns ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will return ReservationErr::NoAvailableSlot.
     pub fn try_reserve_consume(&self) -> Result<ConsumeGuard<T>, ReservationErr> {
         let reservation = self.consume_tracker.try_advance_cursor()?;
+        Ok(ConsumeGuard::new(self, reservation))
+    }
+
+    /// Returns ConsumeGuard that could be used to pull a new value from the queue. It will wait for an available entity until timeout expires.
+    /// If the queue is empty when timeout expires will return ReservationErr::NoAvailableSlot.
+    /// /// The timeout is not an hard timeout, but just represents the minimum time this function is going to wait.
+    pub fn try_reserve_consume_with_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<ConsumeGuard<T>, ReservationErr> {
+        let reservation = self
+            .consume_tracker
+            .try_advance_cursor_with_timeout(timeout)?;
         Ok(ConsumeGuard::new(self, reservation))
     }
 }

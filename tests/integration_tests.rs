@@ -1,6 +1,7 @@
 use ring_buffer::RingBuffer;
 use std::sync::{Arc, RwLock};
 use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, Default, Clone)]
 struct TestStruct {
@@ -73,6 +74,18 @@ fn cant_reserve_for_production_if_all_slots_are_full() {
 }
 
 #[test]
+fn cant_reserve_for_production_if_all_slots_are_full_after_timeut() {
+    let (producer, _) = RingBuffer::create::<TestStruct>(1024);
+
+    for i in 0..producer.size() {
+        producer.reserve_produce().value = i;
+    }
+
+    let res = producer.try_reserve_produce_with_timeout(Duration::from_millis(1));
+    assert!(res.is_err())
+}
+
+#[test]
 fn can_reserve_for_consuming_if_there_is_an_available_slot() {
     let (producer, consumer) = RingBuffer::create::<TestStruct>(1024);
     {
@@ -87,6 +100,13 @@ fn can_reserve_for_consuming_if_there_is_an_available_slot() {
 fn cant_reserve_for_consuming_if_all_slots_are_empty() {
     let (_, consumer) = RingBuffer::create::<TestStruct>(1024);
     let res = consumer.try_reserve_consume();
+    assert!(res.is_err())
+}
+
+#[test]
+fn cant_reserve_for_consuming_if_all_slots_are_empty_before_timeout_expires() {
+    let (_, consumer) = RingBuffer::create::<TestStruct>(1024);
+    let res = consumer.try_reserve_consume_with_timeout(Duration::from_millis(1));
     assert!(res.is_err())
 }
 

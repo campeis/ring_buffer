@@ -1,6 +1,7 @@
 use crossbeam_utils::CachePadded;
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 type AvailabilityStrategy<T> = dyn Fn(&T, usize, usize) -> bool;
 
@@ -93,6 +94,25 @@ impl TrackingCursor {
                     from,
                     to,
                 });
+            }
+        }
+    }
+
+    pub(crate) fn try_advance_cursor_with_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<ReservedForCursor, ReservationErr> {
+        let start_time = Instant::now();
+        loop {
+            match self.try_advance_cursor() {
+                Ok(reserved) => return Ok(reserved),
+                Err(err) => match err {
+                    ReservationErr::NoAvailableSlot => {
+                        if start_time.elapsed() > timeout {
+                            return Err(ReservationErr::NoAvailableSlot);
+                        }
+                    }
+                },
             }
         }
     }
