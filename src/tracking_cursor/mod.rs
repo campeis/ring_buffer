@@ -74,8 +74,8 @@ impl TrackingCursor {
 
     pub(crate) fn try_advance_cursor(&self) -> Result<ReservedForCursor, ReservationErr> {
         loop {
-            let from = self.cursor.load(Ordering::SeqCst);
-            let actual_target = self.target.load(Ordering::SeqCst);
+            let from = self.cursor.load(Ordering::Acquire);
+            let actual_target = self.target.load(Ordering::Relaxed);
 
             let to = (from + 1) & self.overflow_mask;
             let first_available_target = (actual_target + 1) & self.overflow_mask;
@@ -86,7 +86,7 @@ impl TrackingCursor {
 
             if self
                 .cursor
-                .compare_exchange(from, to, Ordering::SeqCst, Ordering::SeqCst)
+                .compare_exchange(from, to, Ordering::Relaxed, Ordering::Relaxed)
                 .is_ok()
             {
                 return Ok(ReservedForCursor {
@@ -124,8 +124,8 @@ impl TrackingCursor {
                 .compare_exchange(
                     reserved.from,
                     reserved.to,
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
+                    Ordering::Release,
+                    Ordering::Relaxed,
                 )
                 .is_ok()
             {
