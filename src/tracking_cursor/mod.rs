@@ -72,6 +72,7 @@ impl TrackingCursor {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn try_advance_cursor(&self) -> Result<ReservedForCursor, ReservationErr> {
         loop {
             let from = self.cursor.load(Ordering::Acquire);
