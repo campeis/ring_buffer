@@ -44,12 +44,15 @@ impl TrackingCursor {
     }
 
     fn new(size: usize, retry_strategy: impl Fn(&Self, usize, usize) -> bool + 'static) -> Self {
-        let size = if size > 1024 { size } else { 1024 };
+        const MINIMUM_BUFFER_SIZE: usize = 1024;
         let size = if size > (usize::MAX >> 1) {
             usize::MAX >> 1
-        } else {
+        } else if size > MINIMUM_BUFFER_SIZE {
             size
+        } else {
+            MINIMUM_BUFFER_SIZE
         };
+
         let size_mask = usize::MAX >> (size - 1).leading_zeros();
         let page_flag = size_mask + 1;
         let overflow_mask = size_mask + page_flag;
