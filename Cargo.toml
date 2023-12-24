@@ -10,5 +10,5 @@ edition = "2021"
 crossbeam-utils = "0.8.15"
 
 [dev-dependencies]
-num_cpus = "1.15.0"
+num_cpus = "1.16.0"
 rstest = "0.18.2"
