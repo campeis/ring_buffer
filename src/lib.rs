@@ -27,7 +27,7 @@ impl RingBuffer {
     /// # Arguments
     ///
     /// * `size` - The maximum number of elements in the queue. it will be pre-allocated. The size will be rounded to the next power of 2 to allow for faster math.
-    pub fn create<T: Default>(size: usize) -> (RingBufferProducer<T>, RingBufferConsumer<T>)
+    pub fn create<T>(size: usize) -> (RingBufferProducer<T>, RingBufferConsumer<T>)
     where
         T: Default + Clone,
     {
@@ -48,7 +48,7 @@ impl RingBuffer {
         )
     }
 
-    pub fn create_with_intermediate_stage<T: Default>(
+    pub fn create_with_intermediate_stage<T>(
         size: usize,
     ) -> (
         RingBufferProducer<T>,
@@ -81,7 +81,7 @@ impl RingBuffer {
         )
     }
 
-    fn init_vec_with_size<T: Default>(size: usize) -> Arc<Vec<UnsafeCell<CachePadded<T>>>>
+    fn init_vec_with_size<T>(size: usize) -> Arc<Vec<UnsafeCell<CachePadded<T>>>>
     where
         T: Default + Clone,
     {
@@ -135,13 +135,13 @@ where
     }
 
     /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full will block until a new item has been consumed and freed.
-    pub fn reserve_produce(&self) -> ProduceGuard<T> {
+    pub fn reserve_produce(&self) -> ProduceGuard<'_, T> {
         let reservation = self.produce_tracker.advance_cursor();
         ProduceGuard::new(self, reservation)
     }
 
     /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full will return ReservationErr::NoAvailableSlot.
-    pub fn try_reserve_produce(&self) -> Result<ProduceGuard<T>, ReservationErr> {
+    pub fn try_reserve_produce(&self) -> Result<ProduceGuard<'_, T>, ReservationErr> {
         let reservation = self.produce_tracker.try_advance_cursor()?;
         Ok(ProduceGuard::new(self, reservation))
     }
@@ -152,7 +152,7 @@ where
     pub fn try_reserve_produce_with_timeout(
         &self,
         timeout: Duration,
-    ) -> Result<ProduceGuard<T>, ReservationErr> {
+    ) -> Result<ProduceGuard<'_, T>, ReservationErr> {
         let reservation = self
             .produce_tracker
             .try_advance_cursor_with_timeout(timeout)?;
@@ -195,13 +195,13 @@ where
     }
 
     /// Returns a ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will block until a new item has been added to the queue.
-    pub fn reserve_consume(&self) -> ConsumeGuard<T> {
+    pub fn reserve_consume(&self) -> ConsumeGuard<'_, T> {
         let reservation = self.consume_tracker.advance_cursor();
         ConsumeGuard::new(self, reservation)
     }
 
     /// Returns ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will return ReservationErr::NoAvailableSlot.
-    pub fn try_reserve_consume(&self) -> Result<ConsumeGuard<T>, ReservationErr> {
+    pub fn try_reserve_consume(&self) -> Result<ConsumeGuard<'_, T>, ReservationErr> {
         let reservation = self.consume_tracker.try_advance_cursor()?;
         Ok(ConsumeGuard::new(self, reservation))
     }
@@ -212,7 +212,7 @@ where
     pub fn try_reserve_consume_with_timeout(
         &self,
         timeout: Duration,
-    ) -> Result<ConsumeGuard<T>, ReservationErr> {
+    ) -> Result<ConsumeGuard<'_, T>, ReservationErr> {
         let reservation = self
             .consume_tracker
             .try_advance_cursor_with_timeout(timeout)?;
