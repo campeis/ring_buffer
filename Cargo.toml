@@ -7,8 +7,7 @@ edition = "2024"
 
 [dependencies]
 crossbeam-utils = "0.8"
-futures-util = "0.3.30"
 
 [dev-dependencies]
-num_cpus = "1.16"
-rstest = "0.18"
+num_cpus = "1.17"
+rstest = "0.26"
