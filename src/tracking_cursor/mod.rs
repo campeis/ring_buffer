@@ -3,15 +3,14 @@ use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-type AvailabilityStrategy<T> = dyn Fn(&T, usize, usize) -> bool;
+type AllSlotsBusyStrategy<T> = dyn Fn(&T, usize, usize) -> bool;
 
 pub(crate) struct TrackingCursor {
+    size: usize,
     size_mask: usize,
-    page_flag: usize,
-    overflow_mask: usize,
     cursor: CachePadded<AtomicUsize>,
     target: CachePadded<AtomicUsize>,
-    availability_strategy: Box<AvailabilityStrategy<Self>>,
+    all_slots_busy_strategy: Box<AllSlotsBusyStrategy<Self>>,
 }
 
 unsafe impl Send for TrackingCursor {}
@@ -37,14 +36,14 @@ pub(crate) enum ReservationErr {
 
 impl TrackingCursor {
     pub(crate) fn leader(size: usize) -> Self {
-        Self::new(size, Self::leader_availability_strategy)
+        Self::new(size, Self::leader_all_slots_busy_strategy)
     }
     pub(crate) fn follower(size: usize) -> Self {
-        Self::new(size, Self::follower_availability_strategy)
+        Self::new(size, Self::follower_all_slots_busy_strategy)
     }
 
     fn new(size: usize, retry_strategy: impl Fn(&Self, usize, usize) -> bool + 'static) -> Self {
-        const MINIMUM_BUFFER_SIZE: usize = 1024;
+        const MINIMUM_BUFFER_SIZE: usize = 2; //2 is the minimum value to use the bit operators correctly
         let size = if size > (usize::MAX >> 1) {
             usize::MAX >> 1
         } else if size > MINIMUM_BUFFER_SIZE {
@@ -54,16 +53,13 @@ impl TrackingCursor {
         };
 
         let size_mask = usize::MAX >> (size - 1).leading_zeros();
-        let page_flag = size_mask + 1;
-        let overflow_mask = size_mask + page_flag;
 
         Self {
+            size,
             size_mask,
-            overflow_mask,
-            page_flag,
-            cursor: CachePadded::new(AtomicUsize::new(overflow_mask)),
-            target: CachePadded::new(AtomicUsize::new(overflow_mask)),
-            availability_strategy: Box::new(retry_strategy),
+            cursor: CachePadded::new(AtomicUsize::new(usize::MAX)),
+            target: CachePadded::new(AtomicUsize::new(usize::MAX)),
+            all_slots_busy_strategy: Box::new(retry_strategy),
         }
     }
 
@@ -81,12 +77,11 @@ impl TrackingCursor {
             let from = self.cursor.load(Ordering::Acquire);
             let actual_target = self.target.load(Ordering::Relaxed);
 
-            let to = (from + 1) & self.overflow_mask;
-            let first_available_target = (actual_target + 1) & self.overflow_mask;
-
-            if (self.availability_strategy)(self, to, first_available_target) {
+            if (self.all_slots_busy_strategy)(self, from, actual_target) {
                 return Err(ReservationErr::NoAvailableSlot);
             };
+
+            let (to, _) = from.overflowing_add(1);
 
             if self
                 .cursor
@@ -94,7 +89,7 @@ impl TrackingCursor {
                 .is_ok()
             {
                 return Ok(ReservedForCursor {
-                    reserved_slot: from & self.size_mask,
+                    reserved_slot: to & self.size_mask,
                     from,
                     to,
                 });
@@ -142,12 +137,15 @@ impl TrackingCursor {
         self.size_mask + 1
     }
 
-    fn leader_availability_strategy(&self, to: usize, first_available_target: usize) -> bool {
-        (to & self.size_mask) == (first_available_target & self.size_mask)
-            && (to & self.page_flag) != (first_available_target & self.page_flag)
+    fn leader_all_slots_busy_strategy(&self, to: usize, first_available_target: usize) -> bool {
+        if to >= first_available_target {
+            (to - first_available_target) >= self.size
+        } else {
+            to + (usize::MAX - first_available_target + 1) >= self.size
+        }
     }
 
-    fn follower_availability_strategy(&self, to: usize, first_available_target: usize) -> bool {
+    fn follower_all_slots_busy_strategy(&self, to: usize, first_available_target: usize) -> bool {
         to == first_available_target
     }
 }
@@ -156,8 +154,8 @@ impl Debug for TrackingCursor {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "TrackingCursor (cursor={:?},target={:?},size_mask={:?},overflow_mask={:?},page_flag={:?})",
-            self.cursor, self.target, self.size_mask, self.overflow_mask, self.page_flag,
+            "TrackingCursor (cursor={:?},target={:?},size_mask={:?})",
+            self.cursor, self.target, self.size_mask,
         )
     }
 }

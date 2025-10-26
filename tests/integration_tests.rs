@@ -1,4 +1,5 @@
 use ring_buffer::RingBuffer;
+use rstest::rstest;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
@@ -8,9 +9,15 @@ struct TestStruct {
     value: usize,
 }
 
-#[test]
-fn use_deref() {
-    let (producer, consumer) = RingBuffer::create::<TestStruct>(1024);
+#[rstest]
+#[case::zero_below_min_size(0)]
+#[case::one_below_min_size(1)]
+#[case::min_size(2)]
+#[case::medium(32)]
+#[case::bigger(1024)]
+#[timeout(Duration::from_secs(10))]
+fn concurrent_test(#[case] num_slots: usize) {
+    let (producer, consumer) = RingBuffer::create::<TestStruct>(num_slots);
     let to_produce = producer.size() * 100;
 
     let mut concurency: usize = num_cpus::get() / 2;
