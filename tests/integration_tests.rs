@@ -17,7 +17,7 @@ struct TestStruct {
 #[case::bigger(1024)]
 #[timeout(Duration::from_secs(10))]
 fn concurrent_test(#[case] num_slots: usize) {
-    let (producer, consumer) = RingBuffer::create::<TestStruct>(num_slots);
+    let (producer, consumer) = RingBuffer::create::<TestStruct>(num_slots, TestStruct::default);
     let to_produce = producer.size() * 100;
 
     let mut concurency: usize = num_cpus::get() / 2;
@@ -62,7 +62,7 @@ fn concurrent_test(#[case] num_slots: usize) {
 
 #[test]
 fn can_reserve_for_production_if_not_all_slots_are_full() {
-    let (producer, _) = RingBuffer::create::<TestStruct>(1024);
+    let (producer, _) = RingBuffer::create::<TestStruct>(1024, TestStruct::default);
 
     let res = producer.try_reserve_produce();
     assert!(res.is_ok())
@@ -70,7 +70,7 @@ fn can_reserve_for_production_if_not_all_slots_are_full() {
 
 #[test]
 fn cant_reserve_for_production_if_all_slots_are_full() {
-    let (producer, _) = RingBuffer::create::<TestStruct>(1024);
+    let (producer, _) = RingBuffer::create::<TestStruct>(1024, TestStruct::default);
 
     for i in 0..producer.size() {
         producer.reserve_produce().value = i;
@@ -82,7 +82,7 @@ fn cant_reserve_for_production_if_all_slots_are_full() {
 
 #[test]
 fn cant_reserve_for_production_if_all_slots_are_full_after_timeut() {
-    let (producer, _) = RingBuffer::create::<TestStruct>(1024);
+    let (producer, _) = RingBuffer::create::<TestStruct>(1024, TestStruct::default);
 
     for i in 0..producer.size() {
         producer.reserve_produce().value = i;
@@ -94,7 +94,7 @@ fn cant_reserve_for_production_if_all_slots_are_full_after_timeut() {
 
 #[test]
 fn can_reserve_for_consuming_if_there_is_an_available_slot() {
-    let (producer, consumer) = RingBuffer::create::<TestStruct>(1024);
+    let (producer, consumer) = RingBuffer::create::<TestStruct>(1024, TestStruct::default);
     {
         let mut guard = producer.reserve_produce();
         guard.value = 1;
@@ -105,21 +105,22 @@ fn can_reserve_for_consuming_if_there_is_an_available_slot() {
 
 #[test]
 fn cant_reserve_for_consuming_if_all_slots_are_empty() {
-    let (_, consumer) = RingBuffer::create::<TestStruct>(1024);
+    let (_, consumer) = RingBuffer::create::<TestStruct>(1024, TestStruct::default);
     let res = consumer.try_reserve_consume();
     assert!(res.is_err())
 }
 
 #[test]
 fn cant_reserve_for_consuming_if_all_slots_are_empty_before_timeout_expires() {
-    let (_, consumer) = RingBuffer::create::<TestStruct>(1024);
+    let (_, consumer) = RingBuffer::create::<TestStruct>(1024, TestStruct::default);
     let res = consumer.try_reserve_consume_with_timeout(Duration::from_millis(1));
     assert!(res.is_err())
 }
 
 #[test]
 fn cant_reserve_for_consuming_if_intermediate_stage_did_not_consume() {
-    let (producer, _, consumer) = RingBuffer::create_with_intermediate_stage::<TestStruct>(1024);
+    let (producer, _, consumer) =
+        RingBuffer::create_with_intermediate_stage::<TestStruct>(1024, TestStruct::default);
 
     {
         producer.try_reserve_produce().unwrap().value = 1;
@@ -131,7 +132,7 @@ fn cant_reserve_for_consuming_if_intermediate_stage_did_not_consume() {
 #[test]
 fn can_reserve_for_consuming_if_intermediate_stage_consumed() {
     let (producer, intermediate, consumer) =
-        RingBuffer::create_with_intermediate_stage::<TestStruct>(1024);
+        RingBuffer::create_with_intermediate_stage::<TestStruct>(1024, TestStruct::default);
     {
         producer.try_reserve_produce().unwrap().value = 1;
     }

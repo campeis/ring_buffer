@@ -27,16 +27,20 @@ impl RingBuffer {
     /// # Arguments
     ///
     /// * `size` - The maximum number of elements in the queue. it will be pre-allocated. The size will be rounded to the next power of 2 to allow for faster math.
-    pub fn create<T>(size: usize) -> (RingBufferProducer<T>, RingBufferConsumer<T>)
+    /// * `factory` - A function providing objects to put in the buffer..
+    pub fn create<T>(
+        size: usize,
+        factory: fn() -> T,
+    ) -> (RingBufferProducer<T>, RingBufferConsumer<T>)
     where
-        T: Default + Clone,
+        T: Clone,
     {
         let produce_tracker = Arc::new(TrackingCursor::leader(size));
         let consume_tracker = Arc::new(TrackingCursor::follower(size));
 
         let size = produce_tracker.size();
 
-        let buffer = Self::init_vec_with_size(size);
+        let buffer = Self::init_vec_with_size(size, factory);
 
         (
             RingBufferProducer::new(
@@ -50,13 +54,14 @@ impl RingBuffer {
 
     pub fn create_with_intermediate_stage<T>(
         size: usize,
+        factory: fn() -> T,
     ) -> (
         RingBufferProducer<T>,
         RingBufferConsumer<T>,
         RingBufferConsumer<T>,
     )
     where
-        T: Default + Clone,
+        T: Clone,
     {
         let produce_tracker = Arc::new(TrackingCursor::leader(size));
         let intermediate_tracker = Arc::new(TrackingCursor::follower(size));
@@ -64,7 +69,7 @@ impl RingBuffer {
 
         let size = produce_tracker.size();
 
-        let buffer = Self::init_vec_with_size(size);
+        let buffer = Self::init_vec_with_size(size, factory);
 
         (
             RingBufferProducer::new(
@@ -81,13 +86,16 @@ impl RingBuffer {
         )
     }
 
-    fn init_vec_with_size<T>(size: usize) -> Arc<Vec<UnsafeCell<CachePadded<T>>>>
+    fn init_vec_with_size<T>(
+        size: usize,
+        factory: fn() -> T,
+    ) -> Arc<Vec<UnsafeCell<CachePadded<T>>>>
     where
-        T: Default + Clone,
+        T: Clone,
     {
         let mut buffer = Vec::with_capacity(size);
         for _ in 0..size {
-            buffer.push(UnsafeCell::default());
+            buffer.push(UnsafeCell::new(CachePadded::new(factory())));
         }
         Arc::new(buffer)
     }
@@ -107,21 +115,15 @@ impl From<tracking_cursor::ReservationErr> for ReservationErr {
 }
 
 #[derive(Debug, Clone)]
-pub struct RingBufferProducer<T>
-where
-    T: Default,
-{
+pub struct RingBufferProducer<T> {
     buffer: Arc<Vec<UnsafeCell<CachePadded<T>>>>,
     produce_tracker: Arc<TrackingCursor>,
     consume_tracker: Arc<TrackingCursor>,
 }
-unsafe impl<T: Default> Send for RingBufferProducer<T> {}
-unsafe impl<T: Default> Sync for RingBufferProducer<T> {}
+unsafe impl<T> Send for RingBufferProducer<T> {}
+unsafe impl<T> Sync for RingBufferProducer<T> {}
 
-impl<T> RingBufferProducer<T>
-where
-    T: Default,
-{
+impl<T> RingBufferProducer<T> {
     fn new(
         buffer: Arc<Vec<UnsafeCell<CachePadded<T>>>>,
         produce_tracker: Arc<TrackingCursor>,
@@ -166,22 +168,16 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct RingBufferConsumer<T>
-where
-    T: Default,
-{
+pub struct RingBufferConsumer<T> {
     buffer: Arc<Vec<UnsafeCell<CachePadded<T>>>>,
     produce_tracker: Arc<TrackingCursor>,
     consume_tracker: Arc<TrackingCursor>,
 }
 
-unsafe impl<T: Default> Send for RingBufferConsumer<T> {}
-unsafe impl<T: Default> Sync for RingBufferConsumer<T> {}
+unsafe impl<T> Send for RingBufferConsumer<T> {}
+unsafe impl<T> Sync for RingBufferConsumer<T> {}
 
-impl<T> RingBufferConsumer<T>
-where
-    T: Default,
-{
+impl<T> RingBufferConsumer<T> {
     fn new(
         buffer: Arc<Vec<UnsafeCell<CachePadded<T>>>>,
         produce_tracker: Arc<TrackingCursor>,
@@ -227,25 +223,19 @@ where
 /// ```
 /// use ring_buffer::RingBuffer;
 ///
-/// let (producer, _) = RingBuffer::create::<usize>(1);
+/// let (producer, _) = RingBuffer::create::<usize>(1, || 0);
 /// {
 ///     let mut reservation = producer.reserve_produce();
 ///     *reservation = 1usize;
 /// }
 /// ```
 #[derive(Debug)]
-pub struct ProduceGuard<'a, T>
-where
-    T: Default,
-{
+pub struct ProduceGuard<'a, T> {
     producer: &'a RingBufferProducer<T>,
     reservation: ReservedForCursor,
 }
 
-impl<'a, T> ProduceGuard<'a, T>
-where
-    T: Default,
-{
+impl<'a, T> ProduceGuard<'a, T> {
     fn new(
         state: &'a RingBufferProducer<T>,
         reservation: ReservedForCursor,
@@ -257,10 +247,7 @@ where
     }
 }
 
-impl<'a, T> Deref for ProduceGuard<'a, T>
-where
-    T: Default,
-{
+impl<'a, T> Deref for ProduceGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -273,10 +260,7 @@ where
     }
 }
 
-impl<'a, T> DerefMut for ProduceGuard<'a, T>
-where
-    T: Default,
-{
+impl<'a, T> DerefMut for ProduceGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
             self.producer.buffer[self.reservation.reserved_slot()]
@@ -287,10 +271,7 @@ where
     }
 }
 
-impl<'a, T> Drop for ProduceGuard<'a, T>
-where
-    T: Default,
-{
+impl<'a, T> Drop for ProduceGuard<'a, T> {
     fn drop(&mut self) {
         self.producer
             .consume_tracker
@@ -305,7 +286,7 @@ where
 /// ```
 /// use ring_buffer::RingBuffer;
 ///
-/// let (producer, consumer) = RingBuffer::create::<usize>(1);
+/// let (producer, consumer) = RingBuffer::create::<usize>(1, || 0);
 /// {
 ///     let mut produce = producer.reserve_produce();
 ///     *produce = 1usize;
@@ -317,18 +298,12 @@ where
 /// }   
 /// ```
 #[derive(Debug)]
-pub struct ConsumeGuard<'a, T>
-where
-    T: Default,
-{
+pub struct ConsumeGuard<'a, T> {
     consumer: &'a RingBufferConsumer<T>,
     reservation: ReservedForCursor,
 }
 
-impl<'a, T> ConsumeGuard<'a, T>
-where
-    T: Default,
-{
+impl<'a, T> ConsumeGuard<'a, T> {
     fn new(
         state: &'a RingBufferConsumer<T>,
         reservation: ReservedForCursor,
@@ -340,10 +315,7 @@ where
     }
 }
 
-impl<'a, T> Deref for ConsumeGuard<'a, T>
-where
-    T: Default,
-{
+impl<'a, T> Deref for ConsumeGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -356,10 +328,7 @@ where
     }
 }
 
-impl<'a, T> Drop for ConsumeGuard<'a, T>
-where
-    T: Default,
-{
+impl<'a, T> Drop for ConsumeGuard<'a, T> {
     fn drop(&mut self) {
         self.consumer
             .produce_tracker
