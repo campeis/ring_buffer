@@ -139,13 +139,25 @@ impl<T> RingBufferProducer<T> {
     /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full will block until a new item has been consumed and freed.
     pub fn reserve_produce(&self) -> ProduceGuard<'_, T> {
         let reservation = self.produce_tracker.advance_cursor();
-        ProduceGuard::new(self, reservation)
+        unsafe {
+            let reserved = self.buffer[reservation.reserved_slot()]
+                .get()
+                .as_ref()
+                .unwrap();
+            ProduceGuard::new(self, reservation, reserved.deref())
+        }
     }
 
     /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full will return ReservationErr::NoAvailableSlot.
     pub fn try_reserve_produce(&self) -> Result<ProduceGuard<'_, T>, ReservationErr> {
         let reservation = self.produce_tracker.try_advance_cursor()?;
-        Ok(ProduceGuard::new(self, reservation))
+        unsafe {
+            let reserved = self.buffer[reservation.reserved_slot()]
+                .get()
+                .as_ref()
+                .unwrap();
+            Ok(ProduceGuard::new(self, reservation, reserved.deref()))
+        }
     }
 
     /// Returns a ProduceGuard that could be used to push a new value in the queue. If the queue is full it will wait for a free spot
@@ -158,7 +170,13 @@ impl<T> RingBufferProducer<T> {
         let reservation = self
             .produce_tracker
             .try_advance_cursor_with_timeout(timeout)?;
-        Ok(ProduceGuard::new(self, reservation))
+        unsafe {
+            let reserved = self.buffer[reservation.reserved_slot()]
+                .get()
+                .as_ref()
+                .unwrap();
+            Ok(ProduceGuard::new(self, reservation, reserved.deref()))
+        }
     }
 
     /// Returns the number of available entities in the producer
@@ -233,16 +251,19 @@ impl<T> RingBufferConsumer<T> {
 pub struct ProduceGuard<'a, T> {
     producer: &'a RingBufferProducer<T>,
     reservation: ReservedForCursor,
+    reserved: &'a T,
 }
 
 impl<'a, T> ProduceGuard<'a, T> {
     fn new(
         state: &'a RingBufferProducer<T>,
         reservation: ReservedForCursor,
+        reserved: &'a T,
     ) -> ProduceGuard<'a, T> {
         ProduceGuard {
             producer: state,
             reservation,
+            reserved,
         }
     }
 }
@@ -251,12 +272,7 @@ impl<'a, T> Deref for ProduceGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        unsafe {
-            self.producer.buffer[self.reservation.reserved_slot()]
-                .get()
-                .as_ref()
-                .unwrap()
-        }
+        self.reserved
     }
 }
 
