@@ -211,13 +211,26 @@ impl<T> RingBufferConsumer<T> {
     /// Returns a ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will block until a new item has been added to the queue.
     pub fn reserve_consume(&self) -> ConsumeGuard<'_, T> {
         let reservation = self.consume_tracker.advance_cursor();
-        ConsumeGuard::new(self, reservation)
+
+        unsafe {
+            let reserved = self.buffer[reservation.reserved_slot()]
+                .get()
+                .as_ref()
+                .unwrap();
+            ConsumeGuard::new(self, reservation, reserved)
+        }
     }
 
     /// Returns ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will return ReservationErr::NoAvailableSlot.
     pub fn try_reserve_consume(&self) -> Result<ConsumeGuard<'_, T>, ReservationErr> {
         let reservation = self.consume_tracker.try_advance_cursor()?;
-        Ok(ConsumeGuard::new(self, reservation))
+        unsafe {
+            let reserved = self.buffer[reservation.reserved_slot()]
+                .get()
+                .as_ref()
+                .unwrap();
+            Ok(ConsumeGuard::new(self, reservation, reserved))
+        }
     }
 
     /// Returns ConsumeGuard that could be used to pull a new value from the queue. It will wait for an available entity until timeout expires.
@@ -230,7 +243,13 @@ impl<T> RingBufferConsumer<T> {
         let reservation = self
             .consume_tracker
             .try_advance_cursor_with_timeout(timeout)?;
-        Ok(ConsumeGuard::new(self, reservation))
+        unsafe {
+            let reserved = self.buffer[reservation.reserved_slot()]
+                .get()
+                .as_ref()
+                .unwrap();
+            Ok(ConsumeGuard::new(self, reservation, reserved))
+        }
     }
 }
 
@@ -317,16 +336,19 @@ impl<'a, T> Drop for ProduceGuard<'a, T> {
 pub struct ConsumeGuard<'a, T> {
     consumer: &'a RingBufferConsumer<T>,
     reservation: ReservedForCursor,
+    reserved: &'a T,
 }
 
 impl<'a, T> ConsumeGuard<'a, T> {
     fn new(
         state: &'a RingBufferConsumer<T>,
         reservation: ReservedForCursor,
+        reserved: &'a T,
     ) -> ConsumeGuard<'a, T> {
         ConsumeGuard {
             consumer: state,
             reservation,
+            reserved,
         }
     }
 }
@@ -335,12 +357,7 @@ impl<'a, T> Deref for ConsumeGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        unsafe {
-            self.consumer.buffer[self.reservation.reserved_slot()]
-                .get()
-                .as_ref()
-                .unwrap()
-        }
+        self.reserved
     }
 }
 
