@@ -79,12 +79,12 @@ impl RingBuffer {
         )
     }
 
-    fn init_vec_with_size<T>(size: usize, factory: fn() -> T) -> Arc<Vec<UnsafeCell<T>>> {
+    fn init_vec_with_size<T>(size: usize, factory: fn() -> T) -> Arc<UnsafeCell<Vec<T>>> {
         let mut buffer = Vec::with_capacity(size);
         for _ in 0..size {
-            buffer.push(UnsafeCell::new(factory()));
+            buffer.push(factory());
         }
-        Arc::new(buffer)
+        Arc::new(UnsafeCell::new(buffer))
     }
 }
 
@@ -103,7 +103,7 @@ impl From<tracking_cursor::ReservationErr> for ReservationErr {
 
 #[derive(Debug, Clone)]
 pub struct RingBufferProducer<T> {
-    buffer: Arc<Vec<UnsafeCell<T>>>,
+    buffer: Arc<UnsafeCell<Vec<T>>>,
     produce_tracker: Arc<TrackingCursor>,
     consume_tracker: Arc<TrackingCursor>,
 }
@@ -112,7 +112,7 @@ unsafe impl<T> Sync for RingBufferProducer<T> {}
 
 impl<T> RingBufferProducer<T> {
     fn new(
-        buffer: Arc<Vec<UnsafeCell<T>>>,
+        buffer: Arc<UnsafeCell<Vec<T>>>,
         produce_tracker: Arc<TrackingCursor>,
         consume_tracker: Arc<TrackingCursor>,
     ) -> Self {
@@ -127,10 +127,8 @@ impl<T> RingBufferProducer<T> {
     pub fn reserve_produce(&self) -> ProduceGuard<'_, T> {
         let reservation = self.produce_tracker.advance_cursor();
         unsafe {
-            let reserved = self.buffer[reservation.reserved_slot()]
-                .get()
-                .as_mut()
-                .unwrap();
+            let reserved =
+                &mut self.buffer.deref().get().as_mut().unwrap()[reservation.reserved_slot()];
             ProduceGuard::new(self, reservation, reserved)
         }
     }
@@ -139,10 +137,8 @@ impl<T> RingBufferProducer<T> {
     pub fn try_reserve_produce(&self) -> Result<ProduceGuard<'_, T>, ReservationErr> {
         let reservation = self.produce_tracker.try_advance_cursor()?;
         unsafe {
-            let reserved = self.buffer[reservation.reserved_slot()]
-                .get()
-                .as_mut()
-                .unwrap();
+            let reserved =
+                &mut self.buffer.deref().get().as_mut().unwrap()[reservation.reserved_slot()];
             Ok(ProduceGuard::new(self, reservation, reserved))
         }
     }
@@ -158,23 +154,21 @@ impl<T> RingBufferProducer<T> {
             .produce_tracker
             .try_advance_cursor_with_timeout(timeout)?;
         unsafe {
-            let reserved = self.buffer[reservation.reserved_slot()]
-                .get()
-                .as_mut()
-                .unwrap();
+            let reserved =
+                &mut self.buffer.deref().get().as_mut().unwrap()[reservation.reserved_slot()];
             Ok(ProduceGuard::new(self, reservation, reserved))
         }
     }
 
     /// Returns the number of available entities in the producer
     pub fn size(&self) -> usize {
-        self.buffer.len()
+        self.produce_tracker.size()
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct RingBufferConsumer<T> {
-    buffer: Arc<Vec<UnsafeCell<T>>>,
+    buffer: Arc<UnsafeCell<Vec<T>>>,
     produce_tracker: Arc<TrackingCursor>,
     consume_tracker: Arc<TrackingCursor>,
 }
@@ -184,7 +178,7 @@ unsafe impl<T> Sync for RingBufferConsumer<T> {}
 
 impl<T> RingBufferConsumer<T> {
     fn new(
-        buffer: Arc<Vec<UnsafeCell<T>>>,
+        buffer: Arc<UnsafeCell<Vec<T>>>,
         produce_tracker: Arc<TrackingCursor>,
         consume_tracker: Arc<TrackingCursor>,
     ) -> Self {
@@ -200,10 +194,8 @@ impl<T> RingBufferConsumer<T> {
         let reservation = self.consume_tracker.advance_cursor();
 
         unsafe {
-            let reserved = self.buffer[reservation.reserved_slot()]
-                .get()
-                .as_ref()
-                .unwrap();
+            let reserved =
+                &self.buffer.deref().get().as_ref().unwrap()[reservation.reserved_slot()];
             ConsumeGuard::new(self, reservation, reserved)
         }
     }
@@ -211,11 +203,10 @@ impl<T> RingBufferConsumer<T> {
     /// Returns ConsumeGuard that could be used to pull a new value from the queue. If the queue is empty will return ReservationErr::NoAvailableSlot.
     pub fn try_reserve_consume(&self) -> Result<ConsumeGuard<'_, T>, ReservationErr> {
         let reservation = self.consume_tracker.try_advance_cursor()?;
+
         unsafe {
-            let reserved = self.buffer[reservation.reserved_slot()]
-                .get()
-                .as_ref()
-                .unwrap();
+            let reserved =
+                &self.buffer.deref().get().as_ref().unwrap()[reservation.reserved_slot()];
             Ok(ConsumeGuard::new(self, reservation, reserved))
         }
     }
@@ -230,11 +221,10 @@ impl<T> RingBufferConsumer<T> {
         let reservation = self
             .consume_tracker
             .try_advance_cursor_with_timeout(timeout)?;
+
         unsafe {
-            let reserved = self.buffer[reservation.reserved_slot()]
-                .get()
-                .as_ref()
-                .unwrap();
+            let reserved =
+                &self.buffer.deref().get().as_ref().unwrap()[reservation.reserved_slot()];
             Ok(ConsumeGuard::new(self, reservation, reserved))
         }
     }
