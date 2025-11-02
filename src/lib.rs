@@ -138,7 +138,7 @@ impl<T> RingBufferProducer<T> {
         unsafe {
             let reserved = self.buffer[reservation.reserved_slot()]
                 .get()
-                .as_ref()
+                .as_mut()
                 .unwrap();
             ProduceGuard::new(self, reservation, reserved)
         }
@@ -150,7 +150,7 @@ impl<T> RingBufferProducer<T> {
         unsafe {
             let reserved = self.buffer[reservation.reserved_slot()]
                 .get()
-                .as_ref()
+                .as_mut()
                 .unwrap();
             Ok(ProduceGuard::new(self, reservation, reserved))
         }
@@ -169,7 +169,7 @@ impl<T> RingBufferProducer<T> {
         unsafe {
             let reserved = self.buffer[reservation.reserved_slot()]
                 .get()
-                .as_ref()
+                .as_mut()
                 .unwrap();
             Ok(ProduceGuard::new(self, reservation, reserved))
         }
@@ -266,14 +266,14 @@ impl<T> RingBufferConsumer<T> {
 pub struct ProduceGuard<'a, T> {
     producer: &'a RingBufferProducer<T>,
     reservation: ReservedForCursor,
-    reserved: &'a T,
+    reserved: &'a mut T,
 }
 
 impl<'a, T> ProduceGuard<'a, T> {
     fn new(
         state: &'a RingBufferProducer<T>,
         reservation: ReservedForCursor,
-        reserved: &'a T,
+        reserved: &'a mut T,
     ) -> ProduceGuard<'a, T> {
         ProduceGuard {
             producer: state,
@@ -293,12 +293,7 @@ impl<'a, T> Deref for ProduceGuard<'a, T> {
 
 impl<'a, T> DerefMut for ProduceGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe {
-            self.producer.buffer[self.reservation.reserved_slot()]
-                .get()
-                .as_mut()
-                .unwrap()
-        }
+        self.reserved
     }
 }
 
