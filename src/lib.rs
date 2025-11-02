@@ -30,10 +30,7 @@ impl RingBuffer {
     pub fn create<T>(
         size: usize,
         factory: fn() -> T,
-    ) -> (RingBufferProducer<T>, RingBufferConsumer<T>)
-    where
-        T: Clone,
-    {
+    ) -> (RingBufferProducer<T>, RingBufferConsumer<T>) {
         let produce_tracker = Arc::new(TrackingCursor::leader(size));
         let consume_tracker = Arc::new(TrackingCursor::follower(size));
 
@@ -58,10 +55,7 @@ impl RingBuffer {
         RingBufferProducer<T>,
         RingBufferConsumer<T>,
         RingBufferConsumer<T>,
-    )
-    where
-        T: Clone,
-    {
+    ) {
         let produce_tracker = Arc::new(TrackingCursor::leader(size));
         let intermediate_tracker = Arc::new(TrackingCursor::follower(size));
         let consume_tracker = Arc::new(TrackingCursor::follower(size));
@@ -85,10 +79,7 @@ impl RingBuffer {
         )
     }
 
-    fn init_vec_with_size<T>(size: usize, factory: fn() -> T) -> Arc<Vec<UnsafeCell<T>>>
-    where
-        T: Clone,
-    {
+    fn init_vec_with_size<T>(size: usize, factory: fn() -> T) -> Arc<Vec<UnsafeCell<T>>> {
         let mut buffer = Vec::with_capacity(size);
         for _ in 0..size {
             buffer.push(UnsafeCell::new(factory()));
