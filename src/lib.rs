@@ -9,7 +9,6 @@
 
 mod tracking_cursor;
 
-use crossbeam_utils::CachePadded;
 use std::cell::UnsafeCell;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
@@ -86,16 +85,13 @@ impl RingBuffer {
         )
     }
 
-    fn init_vec_with_size<T>(
-        size: usize,
-        factory: fn() -> T,
-    ) -> Arc<Vec<UnsafeCell<CachePadded<T>>>>
+    fn init_vec_with_size<T>(size: usize, factory: fn() -> T) -> Arc<Vec<UnsafeCell<T>>>
     where
         T: Clone,
     {
         let mut buffer = Vec::with_capacity(size);
         for _ in 0..size {
-            buffer.push(UnsafeCell::new(CachePadded::new(factory())));
+            buffer.push(UnsafeCell::new(factory()));
         }
         Arc::new(buffer)
     }
@@ -116,7 +112,7 @@ impl From<tracking_cursor::ReservationErr> for ReservationErr {
 
 #[derive(Debug, Clone)]
 pub struct RingBufferProducer<T> {
-    buffer: Arc<Vec<UnsafeCell<CachePadded<T>>>>,
+    buffer: Arc<Vec<UnsafeCell<T>>>,
     produce_tracker: Arc<TrackingCursor>,
     consume_tracker: Arc<TrackingCursor>,
 }
@@ -125,7 +121,7 @@ unsafe impl<T> Sync for RingBufferProducer<T> {}
 
 impl<T> RingBufferProducer<T> {
     fn new(
-        buffer: Arc<Vec<UnsafeCell<CachePadded<T>>>>,
+        buffer: Arc<Vec<UnsafeCell<T>>>,
         produce_tracker: Arc<TrackingCursor>,
         consume_tracker: Arc<TrackingCursor>,
     ) -> Self {
@@ -144,7 +140,7 @@ impl<T> RingBufferProducer<T> {
                 .get()
                 .as_ref()
                 .unwrap();
-            ProduceGuard::new(self, reservation, reserved.deref())
+            ProduceGuard::new(self, reservation, reserved)
         }
     }
 
@@ -156,7 +152,7 @@ impl<T> RingBufferProducer<T> {
                 .get()
                 .as_ref()
                 .unwrap();
-            Ok(ProduceGuard::new(self, reservation, reserved.deref()))
+            Ok(ProduceGuard::new(self, reservation, reserved))
         }
     }
 
@@ -175,7 +171,7 @@ impl<T> RingBufferProducer<T> {
                 .get()
                 .as_ref()
                 .unwrap();
-            Ok(ProduceGuard::new(self, reservation, reserved.deref()))
+            Ok(ProduceGuard::new(self, reservation, reserved))
         }
     }
 
@@ -187,7 +183,7 @@ impl<T> RingBufferProducer<T> {
 
 #[derive(Debug, Clone)]
 pub struct RingBufferConsumer<T> {
-    buffer: Arc<Vec<UnsafeCell<CachePadded<T>>>>,
+    buffer: Arc<Vec<UnsafeCell<T>>>,
     produce_tracker: Arc<TrackingCursor>,
     consume_tracker: Arc<TrackingCursor>,
 }
@@ -197,7 +193,7 @@ unsafe impl<T> Sync for RingBufferConsumer<T> {}
 
 impl<T> RingBufferConsumer<T> {
     fn new(
-        buffer: Arc<Vec<UnsafeCell<CachePadded<T>>>>,
+        buffer: Arc<Vec<UnsafeCell<T>>>,
         produce_tracker: Arc<TrackingCursor>,
         consume_tracker: Arc<TrackingCursor>,
     ) -> Self {
