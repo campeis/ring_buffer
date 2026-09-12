@@ -10,4 +10,4 @@ crossbeam-utils = "0.8"
 
 [dev-dependencies]
 num_cpus = "1.17"
-rstest = "0.26"
+rstest = "0.27"
